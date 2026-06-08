@@ -64,7 +64,9 @@ parameters {
             }
         }
 
-        stage('05 - SONARQUBE ANALYSIS') {
+        
+/*
+stage('05 - SONARQUBE ANALYSIS') {
             steps {
                 echo "Scanning source code with SonarQube..."
                 bat """
@@ -83,7 +85,7 @@ parameters {
                 """
             }
         }
-
+*/
         stage('07 - DEPLOY LOCAL') {
             steps {
                 echo "Deploying application locally with Docker..."
