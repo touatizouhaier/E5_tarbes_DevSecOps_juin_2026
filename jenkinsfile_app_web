@@ -1,0 +1,143 @@
+pipeline {
+
+    agent any
+
+    parameters {
+        string(
+            name: 'NAME',
+            defaultValue: 'Zouhaier',
+            description: 'Please tell me your name'
+        )
+
+        text(
+            name: 'DESC',
+            defaultValue: 'Pipeline CI/CD Jenkins local avec GitHub - E5 Tarbes DevSecOps Juin 2026',
+            description: 'Description du Job'
+        )
+
+        booleanParam(
+            name: 'SKIP_TEST',
+            defaultValue: false,
+            description: 'Skip running Tests ?'
+        )
+
+        choice(
+            name: 'BRANCH',
+            choices: ['main'],
+            description: 'Choose Git branch'
+        )
+
+        password(
+            name: 'SONAR_SERVER_PWD',
+            description: 'Enter SONAR password'
+        )
+    }
+
+    environment {
+        APP_NAME = "e5-tarbes-devsecops-app"
+        DOCKER_IMAGE = "e5-tarbes-devsecops-app"
+        SONAR_URL = "http://localhost:9000"
+        GITHUB_REPO = "https://github.com/touatizouhaier/E5_tarbes_DevSecOps_juin_2026.git"
+    }
+
+    stages {
+
+        stage('01 - PRINT PARAMETERS') {
+            steps {
+                echo "Hello ${params.NAME}"
+                echo "Job Description: ${params.DESC}"
+                echo "Branch Selected: ${params.BRANCH}"
+                echo "Skip Test: ${params.SKIP_TEST}"
+            }
+        }
+
+        stage('02 - CHECKOUT GITHUB') {
+            steps {
+                echo "Downloading source code from GitHub..."
+                git branch: "${params.BRANCH}",
+                    url: "${GITHUB_REPO}"
+            }
+        }
+
+        stage('03 - BUILD APPLICATION') {
+            steps {
+                echo "Building application..."
+                sh """
+                echo "Compilation en cours..."
+                mvn clean package
+                """
+            }
+        }
+
+        stage('04 - RUN TESTS') {
+            when {
+                expression {
+                    return params.SKIP_TEST == false
+                }
+            }
+
+            steps {
+                echo "Running tests..."
+                sh """
+                mvn test
+                """
+            }
+        }
+
+        stage('05 - SONARQUBE ANALYSIS') {
+            steps {
+                echo "Scanning source code with SonarQube..."
+                sh """
+                mvn sonar:sonar \\
+                -Dsonar.host.url=${SONAR_URL} \\
+                -Dsonar.login=${params.SONAR_SERVER_PWD}
+                """
+            }
+        }
+
+        stage('06 - DOCKER BUILD') {
+            steps {
+                echo "Creating Docker image..."
+                sh """
+                docker build -t ${DOCKER_IMAGE}:latest .
+                """
+            }
+        }
+
+        stage('07 - DEPLOY LOCAL') {
+            steps {
+                echo "Deploying application locally with Docker..."
+                sh """
+                docker stop ${APP_NAME} || true
+                docker rm ${APP_NAME} || true
+
+                docker run -d \\
+                --name ${APP_NAME} \\
+                -p 8080:8080 \\
+                ${DOCKER_IMAGE}:latest
+                """
+            }
+        }
+    }
+
+    post {
+        success {
+            echo """
+            =========================
+            PIPELINE SUCCESS
+            Application deployed locally
+            URL: http://localhost:8080
+            =========================
+            """
+        }
+
+        failure {
+            echo """
+            =========================
+            PIPELINE FAILED
+            Please check Jenkins logs
+            =========================
+            """
+        }
+    }
+}
