@@ -1,4 +1,4 @@
-ipeline {
+Pipeline {
     agent any
     parameters {
         string(name: 'NAME', description: 'Please tell me your name?')
