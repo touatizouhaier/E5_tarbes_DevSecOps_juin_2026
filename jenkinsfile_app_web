@@ -2,7 +2,12 @@ pipeline {
 
     agent any
 
-    parameters {
+   tools {
+    maven 'Maven-3.9'
+}
+
+
+parameters {
         string(name: 'NAME', defaultValue: 'Zouhaier', description: 'Please tell me your name')
         text(name: 'DESC', defaultValue: 'Pipeline CI/CD Jenkins local avec GitHub', description: 'Description du Job')
         booleanParam(name: 'SKIP_TEST', defaultValue: false, description: 'Skip running Tests ?')
