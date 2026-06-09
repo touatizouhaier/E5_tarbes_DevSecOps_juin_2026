@@ -18,6 +18,7 @@ pipeline {
         APP_NAME = "e5-tarbes-devsecops-app"
         DOCKER_IMAGE = "e5-tarbes-devsecops-app"
         GITHUB_REPO = "https://github.com/touatizouhaier/E5_tarbes_DevSecOps_juin_2026.git"
+        TRIVY_EXE = "C:\\ProgramData\\chocolatey\\bin\\trivy.exe"
     }
 
     stages {
@@ -41,8 +42,12 @@ pipeline {
                 echo ==== DOCKER ====
                 docker --version
 
-                echo ==== TRIVY ====
-                trivy --version
+                echo ==== TRIVY - PATH WINDOWS ====
+                where trivy
+
+                echo ==== TRIVY - CHEMIN COMPLET ====
+                echo %TRIVY_EXE%
+                "%TRIVY_EXE%" --version
                 """
             }
         }
@@ -90,7 +95,7 @@ pipeline {
             }
             steps {
                 bat """
-                trivy image ^
+                "%TRIVY_EXE%" image ^
                 --severity HIGH,CRITICAL ^
                 --format table ^
                 --output trivy-report.txt ^
