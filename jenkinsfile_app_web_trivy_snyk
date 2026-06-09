@@ -1,0 +1,211 @@
+pipeline {
+
+    agent any
+
+    tools {
+        maven 'Maven-3.9'
+    }
+
+    parameters {
+        string(name: 'NAME', defaultValue: 'Zouhaier', description: 'Votre nom')
+
+        text(name: 'DESC', defaultValue: 'Pipeline CI/CD DevSecOps Jenkins + GitHub + Maven + Docker + Trivy + Snyk', description: 'Description du Job')
+
+        booleanParam(name: 'SKIP_TEST', defaultValue: false, description: 'Ignorer les tests ?')
+
+        booleanParam(name: 'SKIP_TRIVY', defaultValue: false, description: 'Ignorer le scan Trivy ?')
+
+        booleanParam(name: 'SKIP_SNYK', defaultValue: false, description: 'Ignorer le scan Snyk ?')
+
+        choice(name: 'BRANCH', choices: ['main'], description: 'Branche GitHub')
+    }
+
+    environment {
+        APP_NAME = "e5-tarbes-devsecops-app"
+
+        DOCKER_IMAGE = "e5-tarbes-devsecops-app"
+
+        GITHUB_REPO = "https://github.com/touatizouhaier/E5_tarbes_DevSecOps_juin_2026.git"
+
+        TRIVY_EXE = "C:\\ProgramData\\chocolatey\\bin\\trivy.exe"
+
+        SNYK_EXE = "C:\\ProgramData\\chocolatey\\bin\\snyk.exe"
+    }
+
+    stages {
+
+        stage('01 - PRINT PARAMETERS') {
+            steps {
+                echo "Hello ${params.NAME}"
+                echo "Description: ${params.DESC}"
+                echo "Branch: ${params.BRANCH}"
+                echo "Skip Test: ${params.SKIP_TEST}"
+                echo "Skip Trivy: ${params.SKIP_TRIVY}"
+                echo "Skip Snyk: ${params.SKIP_SNYK}"
+            }
+        }
+
+        stage('02 - CHECK TOOLS') {
+            steps {
+                bat """
+                echo ===== MAVEN =====
+                mvn -version
+
+                echo ===== DOCKER =====
+                docker --version
+
+                echo ===== TRIVY =====
+                "%TRIVY_EXE%" --version
+
+                echo ===== SNYK =====
+                "%SNYK_EXE%" --version
+                """
+            }
+        }
+
+        stage('03 - CHECKOUT GITHUB') {
+            steps {
+                echo "Clonage du depot GitHub..."
+                git branch: "${params.BRANCH}", url: "${GITHUB_REPO}"
+            }
+        }
+
+        stage('04 - BUILD APPLICATION') {
+            steps {
+                echo "Compilation Maven..."
+                bat """
+                mvn clean package
+                """
+            }
+        }
+
+        stage('05 - RUN TESTS') {
+            when {
+                expression {
+                    return params.SKIP_TEST == false
+                }
+            }
+
+            steps {
+                echo "Execution des tests Maven..."
+                bat """
+                mvn test
+                """
+            }
+        }
+
+        stage('06 - DOCKER BUILD') {
+            steps {
+                echo "Creation de l'image Docker..."
+                bat """
+                docker build -t %DOCKER_IMAGE%:latest .
+                """
+            }
+        }
+
+        stage('07 - TRIVY SECURITY SCAN') {
+            when {
+                expression {
+                    return params.SKIP_TRIVY == false
+                }
+            }
+
+            steps {
+                echo "Analyse securite avec Trivy..."
+                bat """
+                "%TRIVY_EXE%" image ^
+                --severity HIGH,CRITICAL ^
+                --format table ^
+                --output trivy-report.txt ^
+                %DOCKER_IMAGE%:latest
+
+                type trivy-report.txt
+                """
+            }
+        }
+
+        stage('08 - SNYK OPEN SOURCE SCAN') {
+            when {
+                expression {
+                    return params.SKIP_SNYK == false
+                }
+            }
+
+            steps {
+                echo "Analyse des dependances Maven avec Snyk..."
+
+                withCredentials([string(credentialsId: 'snyk-token', variable: 'SNYK_TOKEN')]) {
+                    bat """
+                    "%SNYK_EXE%" auth %SNYK_TOKEN%
+
+                    "%SNYK_EXE%" test ^
+                    --file=pom.xml ^
+                    --package-manager=maven ^
+                    --severity-threshold=high
+                    """
+                }
+            }
+        }
+
+        stage('09 - SNYK CONTAINER SCAN') {
+            when {
+                expression {
+                    return params.SKIP_SNYK == false
+                }
+            }
+
+            steps {
+                echo "Analyse de l'image Docker avec Snyk..."
+
+                withCredentials([string(credentialsId: 'snyk-token', variable: 'SNYK_TOKEN')]) {
+                    bat """
+                    "%SNYK_EXE%" auth %SNYK_TOKEN%
+
+                    "%SNYK_EXE%" container test %DOCKER_IMAGE%:latest ^
+                    --severity-threshold=high
+                    """
+                }
+            }
+        }
+
+        stage('10 - DEPLOY LOCAL') {
+            steps {
+                echo "Deploiement local Docker..."
+                bat """
+                docker stop %APP_NAME% || exit /b 0
+                docker rm %APP_NAME% || exit /b 0
+
+                docker run -d --name %APP_NAME% -p 8080:8080 %DOCKER_IMAGE%:latest
+                """
+            }
+        }
+    }
+
+    post {
+        success {
+            echo """
+            ========================================
+            PIPELINE SUCCESS
+            Application deployee localement
+            URL : http://localhost:8080
+            ========================================
+            """
+        }
+
+        failure {
+            echo """
+            ========================================
+            PIPELINE FAILED
+            Verifier les logs Jenkins
+            ========================================
+            """
+        }
+
+        always {
+            echo """
+            Pipeline termine.
+            Rapport Trivy genere : trivy-report.txt
+            """
+        }
+    }
+}
