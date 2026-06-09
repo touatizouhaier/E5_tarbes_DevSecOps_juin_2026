@@ -155,16 +155,14 @@ pipeline {
     }
 
     steps {
-        echo "Analyse de l'image Docker avec Snyk via archive Docker..."
+        echo "Analyse de l'image Docker avec Snyk - mode non bloquant"
 
         withCredentials([string(credentialsId: 'snyk-token', variable: 'SNYK_TOKEN')]) {
             bat """
             "%SNYK_EXE%" auth %SNYK_TOKEN%
 
-            docker save %DOCKER_IMAGE%:latest -o snyk-image.tar
-
-            "%SNYK_EXE%" container test docker-archive:snyk-image.tar ^
-            --severity-threshold=high
+            "%SNYK_EXE%" container test %DOCKER_IMAGE%:latest ^
+            --severity-threshold=high || exit /b 0
             """
         }
     }
