@@ -1,0 +1,124 @@
+pipeline {
+
+    agent any
+
+    tools {
+        maven 'Maven-3.9'
+    }
+
+    parameters {
+        string(name: 'NAME', defaultValue: 'Zouhaier', description: 'Votre nom')
+        text(name: 'DESC', defaultValue: 'Pipeline CI/CD DevSecOps Jenkins + GitHub + Maven + Docker + Trivy', description: 'Description du Job')
+        booleanParam(name: 'SKIP_TEST', defaultValue: false, description: 'Ignorer les tests ?')
+        booleanParam(name: 'SKIP_TRIVY', defaultValue: false, description: 'Ignorer le scan Trivy ?')
+        choice(name: 'BRANCH', choices: ['main'], description: 'Branche GitHub')
+    }
+
+    environment {
+        APP_NAME = "e5-tarbes-devsecops-app"
+        DOCKER_IMAGE = "e5-tarbes-devsecops-app"
+        GITHUB_REPO = "https://github.com/touatizouhaier/E5_tarbes_DevSecOps_juin_2026.git"
+    }
+
+    stages {
+
+        stage('01 - PRINT PARAMETERS') {
+            steps {
+                echo "Hello ${params.NAME}"
+                echo "Description: ${params.DESC}"
+                echo "Branch: ${params.BRANCH}"
+                echo "Skip Test: ${params.SKIP_TEST}"
+                echo "Skip Trivy: ${params.SKIP_TRIVY}"
+            }
+        }
+
+        stage('02 - CHECK TOOLS') {
+            steps {
+                bat """
+                echo ==== MAVEN ====
+                mvn -version
+
+                echo ==== DOCKER ====
+                docker --version
+
+                echo ==== TRIVY ====
+                trivy --version
+                """
+            }
+        }
+
+        stage('03 - CHECKOUT GITHUB') {
+            steps {
+                git branch: "${params.BRANCH}", url: "${GITHUB_REPO}"
+            }
+        }
+
+        stage('04 - BUILD APPLICATION') {
+            steps {
+                bat """
+                mvn clean package
+                """
+            }
+        }
+
+        stage('05 - RUN TESTS') {
+            when {
+                expression {
+                    return params.SKIP_TEST == false
+                }
+            }
+            steps {
+                bat """
+                mvn test
+                """
+            }
+        }
+
+        stage('06 - DOCKER BUILD') {
+            steps {
+                bat """
+                docker build -t %DOCKER_IMAGE%:latest .
+                """
+            }
+        }
+
+        stage('07 - TRIVY SECURITY SCAN') {
+            when {
+                expression {
+                    return params.SKIP_TRIVY == false
+                }
+            }
+            steps {
+                bat """
+                trivy image ^
+                --severity HIGH,CRITICAL ^
+                --format table ^
+                --output trivy-report.txt ^
+                %DOCKER_IMAGE%:latest
+
+                type trivy-report.txt
+                """
+            }
+        }
+
+        stage('08 - DEPLOY LOCAL') {
+            steps {
+                bat """
+                docker stop %APP_NAME% || exit /b 0
+                docker rm %APP_NAME% || exit /b 0
+                docker run -d --name %APP_NAME% -p 8080:8080 %DOCKER_IMAGE%:latest
+                """
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "PIPELINE SUCCESS - Application disponible sur http://localhost:8080"
+        }
+
+        failure {
+            echo "PIPELINE FAILED - Vérifier les logs Jenkins"
+        }
+    }
+}
